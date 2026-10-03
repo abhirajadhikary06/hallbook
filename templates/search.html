@@ -1,0 +1,413 @@
+{% extends "base.html" %}
+{% block title %}Search Halls — HallBook{% end %}
+
+{% block head %}
+<!-- MapLibre GL JS for 3D maps -->
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css">
+<script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+<style>
+#map-container {
+  position: relative;
+  height: 500px;
+  border-radius: var(--hb-radius);
+  overflow: hidden;
+  border: 1px solid var(--hb-border);
+  margin-bottom: 1.5rem;
+}
+#map {
+  height: 100%;
+  width: 100%;
+  background: var(--hb-surface-2);
+}
+.maplibregl-popup-content {
+  background: var(--hb-surface);
+  color: var(--hb-text);
+  border: 1px solid var(--hb-border-strong);
+  border-radius: 8px;
+  padding: 0;
+}
+.maplibregl-popup-close-button {
+  color: var(--hb-text);
+  font-size: 20px;
+  padding: 4px 8px;
+}
+.maplibregl-popup-close-button:hover {
+  background: var(--hb-surface-3);
+}
+.hall-popup {
+  padding: 12px;
+}
+.hall-popup h6 {
+  margin-bottom: 0.5rem;
+  color: var(--hb-text);
+}
+.hall-popup .small {
+  color: var(--hb-muted);
+}
+.view-toggle {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+.view-toggle .btn {
+  flex: 1;
+}
+.view-toggle .btn.active {
+  background: var(--hb-surface-3);
+  border-color: var(--hb-border-strong);
+}
+.maplibregl-ctrl-group button {
+  background: var(--hb-surface);
+  border: 1px solid var(--hb-border-strong);
+}
+.maplibregl-ctrl-group button:hover {
+  background: var(--hb-surface-3);
+}
+.map-3d-toggle {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 1000;
+}
+</style>
+{% end %}
+
+{% block content %}
+<div class="page-head">
+  <h2><i class="bi bi-search"></i> Search halls</h2>
+</div>
+
+<form method="get" action="/search" class="row g-2 mb-4">
+  <div class="col-md-4">
+    <input type="text" name="location" class="form-control" placeholder="Location (city)" value="{{ location }}">
+  </div>
+  <div class="col-md-5">
+    <input type="text" name="q" class="form-control" placeholder="Name or keyword" value="{{ q }}">
+  </div>
+  <div class="col-md-3">
+    <button type="submit" class="btn btn-primary w-100"><i class="bi bi-search"></i> Search</button>
+  </div>
+</form>
+
+<!-- View Toggle Buttons -->
+<div class="view-toggle">
+  <button class="btn btn-outline-primary" id="list-view-btn" onclick="showListView()">
+    <i class="bi bi-list-ul"></i> List View
+  </button>
+  <button class="btn btn-outline-primary active" id="map-view-btn" onclick="showMapView()">
+    <i class="bi bi-globe"></i> Map View
+  </button>
+</div>
+
+<!-- Map Container -->
+<div id="map-container">
+  <button class="btn btn-sm btn-primary map-3d-toggle" id="toggle-3d" onclick="toggle3D()">
+    <i class="bi bi-box"></i> Toggle 3D
+  </button>
+  <div id="map"></div>
+</div>
+
+<!-- List Container -->
+<div id="list-container" style="display: none;">
+{% if not orgs %}
+  <div class="text-center text-muted py-5">
+    <i class="bi bi-geo-alt fs-1 d-block mb-2"></i>
+    {% if location or q %}
+      No organizations found. Try a different location or keyword.
+    {% else %}
+      Enter a location (e.g. <strong class="text-light">New York</strong>) to find halls.
+    {% end %}
+  </div>
+{% else %}
+  {% for org in orgs %}
+  <div class="card mb-3">
+    <div class="card-header d-flex align-items-center gap-2">
+      <span>{{ org['name'] }}</span>
+      <span class="badge bg-secondary"><i class="bi bi-geo-alt"></i> {{ org['location'] }}</span>
+    </div>
+    <div class="card-body">
+      {% if org['description'] %}<p class="text-muted small">{{ org['description'] }}</p>{% end %}
+      <div class="row g-3">
+        {% for h in org.get('halls', []) %}
+        <div class="col-md-4">
+          <div class="hall-tile d-flex flex-column">
+            <h6 class="mb-1">{{ h['name'] }}</h6>
+            <div class="small text-muted mb-3">
+              <i class="bi bi-people"></i> {{ h['capacity'] }} &middot; {{ h['amenities'] or '—' }}
+            </div>
+            <a href="/hall/{{ h['id'] }}" class="btn btn-sm btn-outline-primary mt-auto align-self-start">View &amp; book</a>
+          </div>
+        </div>
+        {% end %}
+        {% if not org.get('halls') %}
+          <div class="col-12 text-muted small">No halls listed yet.</div>
+        {% end %}
+      </div>
+    </div>
+  </div>
+  {% end %}
+{% end %}
+</div>
+{% end %}
+
+{% block scripts %}
+<script>
+// Hall data for map markers
+const hallsData = {% raw orgs_json %};
+const searchLocation = "{{ location }}";
+
+let map = null;
+let is3DEnabled = false;
+
+// Geocode location using Nominatim (free OpenStreetMap geocoding)
+async function geocodeLocation(locationName) {
+  if (!locationName || locationName.trim() === '') {
+    return null;
+  }
+  
+  try {
+    const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(locationName)}&limit=1`);
+    const data = await response.json();
+    
+    if (data && data.length > 0) {
+      return {
+        lat: parseFloat(data[0].lat),
+        lng: parseFloat(data[0].lon)
+      };
+    }
+  } catch (error) {
+    console.error('Geocoding error:', error);
+  }
+  
+  return null;
+}
+
+// Get coordinates for halls based on their organization location
+async function geocodeHalls() {
+  const locationCache = {};
+  
+  for (const org of hallsData) {
+    if (org.halls && org.halls.length > 0) {
+      // Check if we've already geocoded this location
+      if (!locationCache[org.location]) {
+        const coords = await geocodeLocation(org.location);
+        if (coords) {
+          locationCache[org.location] = coords;
+        }
+      }
+      
+      // Assign coordinates to all halls in this org
+      if (locationCache[org.location]) {
+        org.halls.forEach(hall => {
+          // Add slight randomization so markers don't overlap perfectly
+          hall.latitude = locationCache[org.location].lat + (Math.random() - 0.5) * 0.01;
+          hall.longitude = locationCache[org.location].lng + (Math.random() - 0.5) * 0.01;
+        });
+      }
+    }
+  }
+}
+
+async function initMap() {
+  // Geocode search location or use first org location
+  let mapCenter = { lng: -74.0060, lat: 40.7128 }; // Default: New York
+  let mapZoom = 12;
+  
+  // Try to geocode the search location first
+  if (searchLocation && searchLocation.trim() !== '') {
+    const coords = await geocodeLocation(searchLocation);
+    if (coords) {
+      mapCenter = { lng: coords.lng, lat: coords.lat };
+      mapZoom = 11;
+    }
+  } else if (hallsData && hallsData.length > 0 && hallsData[0].location) {
+    // Otherwise, use the first organization's location
+    const coords = await geocodeLocation(hallsData[0].location);
+    if (coords) {
+      mapCenter = { lng: coords.lng, lat: coords.lat };
+      mapZoom = 11;
+    }
+  }
+  
+  // Geocode all halls
+  await geocodeHalls();
+  
+  // Initialize MapLibre GL map with OpenFreeMap
+  map = new maplibregl.Map({
+    container: 'map',
+    style: 'https://tiles.openfreemap.org/styles/liberty',
+    center: [mapCenter.lng, mapCenter.lat],
+    zoom: mapZoom,
+    pitch: 0,
+    bearing: 0
+  });
+
+  // Add navigation controls
+  map.addControl(new maplibregl.NavigationControl(), 'bottom-right');
+  
+  // Add scale control
+  map.addControl(new maplibregl.ScaleControl(), 'bottom-left');
+
+  // Wait for map to load
+  map.on('load', () => {
+    // Enable 3D buildings
+    const layers = map.getStyle().layers;
+    const labelLayerId = layers.find(
+      (layer) => layer.type === 'symbol' && layer.layout['text-field']
+    )?.id;
+
+    // Add 3D building layer if label layer exists
+    if (labelLayerId) {
+      map.addLayer(
+        {
+          'id': '3d-buildings',
+          'source': 'composite',
+          'source-layer': 'building',
+          'filter': ['==', 'extrude', 'true'],
+          'type': 'fill-extrusion',
+          'minzoom': 15,
+          'paint': {
+            'fill-extrusion-color': '#6b8cff',
+            'fill-extrusion-height': [
+              'interpolate',
+              ['linear'],
+              ['zoom'],
+              15,
+              0,
+              15.05,
+              ['get', 'height']
+            ],
+            'fill-extrusion-base': [
+              'interpolate',
+              ['linear'],
+              ['zoom'],
+              15,
+              0,
+              15.05,
+              ['get', 'min_height']
+            ],
+            'fill-extrusion-opacity': 0.6
+          }
+        },
+        labelLayerId
+      );
+    }
+
+    // Add markers for each hall
+    if (hallsData && hallsData.length > 0) {
+      const bounds = new maplibregl.LngLatBounds();
+      let hasValidCoords = false;
+      
+      hallsData.forEach(org => {
+        if (org.halls && org.halls.length > 0) {
+          org.halls.forEach(hall => {
+            // Only add markers if we have valid coordinates
+            if (hall.latitude && hall.longitude) {
+              const lng = hall.longitude;
+              const lat = hall.latitude;
+              
+              bounds.extend([lng, lat]);
+              hasValidCoords = true;
+              
+              // Create custom marker element
+              const markerEl = document.createElement('div');
+              markerEl.className = 'custom-marker';
+              markerEl.innerHTML = '<div style="background-color: #6b8cff; color: white; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.5); cursor: pointer;"><i class="bi bi-building" style="font-size: 14px;"></i></div>';
+              
+              // Create popup content
+              const popupContent = `
+                <div class="hall-popup">
+                  <h6>${escapeHtml(hall.name)}</h6>
+                  <div class="small mb-2">
+                    <strong>${escapeHtml(org.name)}</strong><br>
+                    <i class="bi bi-geo-alt"></i> ${escapeHtml(org.location)}
+                  </div>
+                  <div class="small text-muted mb-2">
+                    <i class="bi bi-people"></i> ${hall.capacity} &middot; ${escapeHtml(hall.amenities || '—')}
+                  </div>
+                  <a href="/hall/${hall.id}" class="btn btn-sm btn-primary w-100">View & book</a>
+                </div>
+              `;
+              
+              // Create popup
+              const popup = new maplibregl.Popup({ offset: 25 })
+                .setHTML(popupContent);
+              
+              // Create marker
+              new maplibregl.Marker({ element: markerEl })
+                .setLngLat([lng, lat])
+                .setPopup(popup)
+                .addTo(map);
+            }
+          });
+        }
+      });
+      
+      // Fit map to show all markers if we have valid coordinates
+      if (hasValidCoords && !bounds.isEmpty()) {
+        map.fitBounds(bounds, { 
+          padding: { top: 50, bottom: 50, left: 50, right: 50 },
+          maxZoom: 14
+        });
+      }
+    }
+  });
+}
+
+// Helper function to escape HTML
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// Toggle 3D view
+function toggle3D() {
+  is3DEnabled = !is3DEnabled;
+  
+  if (is3DEnabled) {
+    // Enable 3D view
+    map.easeTo({
+      pitch: 60,
+      bearing: -20,
+      duration: 1000
+    });
+    document.getElementById('toggle-3d').innerHTML = '<i class="bi bi-square"></i> 2D View';
+  } else {
+    // Back to 2D view
+    map.easeTo({
+      pitch: 0,
+      bearing: 0,
+      duration: 1000
+    });
+    document.getElementById('toggle-3d').innerHTML = '<i class="bi bi-box"></i> 3D View';
+  }
+}
+
+function showMapView() {
+  document.getElementById('map-container').style.display = 'block';
+  document.getElementById('list-container').style.display = 'none';
+  document.getElementById('map-view-btn').classList.add('active');
+  document.getElementById('list-view-btn').classList.remove('active');
+  
+  // Refresh map
+  if (map) {
+    setTimeout(() => map.resize(), 100);
+  }
+}
+
+function showListView() {
+  document.getElementById('map-container').style.display = 'none';
+  document.getElementById('list-container').style.display = 'block';
+  document.getElementById('list-view-btn').classList.add('active');
+  document.getElementById('map-view-btn').classList.remove('active');
+}
+
+// Initialize map on page load
+document.addEventListener('DOMContentLoaded', function() {
+  console.log('Initializing map with data:', hallsData);
+  console.log('Search location:', searchLocation);
+  initMap();
+});
+</script>
+{% end %}

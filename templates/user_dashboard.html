@@ -1,0 +1,273 @@
+{% extends "base.html" %}
+{% block title %}My Bookings — HallBook{% end %}
+{% block content %}
+<div class="page-head">
+  <h2><i class="bi bi-calendar-check"></i> My bookings</h2>
+  <a href="/search" class="btn btn-primary"><i class="bi bi-plus-lg"></i> New request</a>
+</div>
+
+{% if notifications %}
+<div class="card mb-4">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-bell"></i> Notifications</span>
+    <button class="btn btn-sm btn-outline-secondary" onclick="markAllRead()">Mark all read</button>
+  </div>
+  <div class="card-body p-0">
+    <!-- Latest Notification (Unread) -->
+    <div id="latest-notification-container"></div>
+    
+    <!-- Dropdown for Older Notifications -->
+    <div class="border-top">
+      <button class="btn btn-link w-100 text-start text-decoration-none py-2 px-3" 
+              type="button" 
+              data-bs-toggle="collapse" 
+              data-bs-target="#olderNotifications" 
+              aria-expanded="false">
+        <i class="bi bi-chevron-down"></i> View older notifications (<span id="older-count">0</span>)
+      </button>
+      <div class="collapse" id="olderNotifications">
+        <ul class="list-group list-group-flush" id="older-notifications-list">
+          <!-- Older notifications will be populated here -->
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Notification management system
+const notificationData = {% raw notifications_json %};
+let latestUnreadId = null;
+let autoHideTimers = {};
+
+function renderNotifications() {
+  const latestContainer = document.getElementById('latest-notification-container');
+  const olderList = document.getElementById('older-notifications-list');
+  const olderCount = document.getElementById('older-count');
+  
+  // Find the latest unread notification
+  const unreadNotifs = notificationData.filter(n => !n.is_read);
+  const latestUnread = unreadNotifs.length > 0 ? unreadNotifs[0] : null;
+  
+  // Get all other notifications (read or older unread)
+  const olderNotifs = latestUnread 
+    ? notificationData.filter(n => n.id !== latestUnread.id)
+    : notificationData;
+  
+  // Render latest notification
+  if (latestUnread) {
+    latestUnreadId = latestUnread.id;
+    latestContainer.innerHTML = `
+      <div class="alert alert-warning mb-0 rounded-0 d-flex justify-content-between align-items-start" 
+           id="notification-${latestUnread.id}"
+           data-notification-id="${latestUnread.id}">
+        <div class="flex-grow-1">
+          <strong><i class="bi bi-bell-fill"></i> ${escapeHtml(latestUnread.title)}</strong>
+          <p class="mb-1 mt-2">${escapeHtml(latestUnread.message)}</p>
+          <small class="text-muted">${escapeHtml(latestUnread.created_at.substring(0, 19))}</small>
+        </div>
+        <button class="btn btn-sm btn-outline-primary ms-3" onclick="markReadAndHide(${latestUnread.id})">
+          Dismiss
+        </button>
+      </div>
+    `;
+    
+    // Auto-hide after 1 minute
+    startAutoHideTimer(latestUnread.id);
+  } else {
+    latestContainer.innerHTML = `
+      <div class="alert alert-info mb-0 rounded-0">
+        <i class="bi bi-check-circle"></i> No new notifications
+      </div>
+    `;
+  }
+  
+  // Render older notifications
+  olderCount.textContent = olderNotifs.length;
+  if (olderNotifs.length === 0) {
+    olderList.innerHTML = `
+      <li class="list-group-item text-muted text-center py-3">
+        <i class="bi bi-inbox"></i> No older notifications
+      </li>
+    `;
+  } else {
+    olderList.innerHTML = olderNotifs.map(n => `
+      <li class="list-group-item ${n.is_read ? '' : 'list-group-item-light'}">
+        <div class="d-flex justify-content-between gap-3">
+          <div class="flex-grow-1">
+            <strong>${escapeHtml(n.title)}</strong>
+            ${!n.is_read ? '<span class="badge bg-warning text-dark ms-2">Unread</span>' : ''}
+            <div class="small text-muted mt-1">${escapeHtml(n.message)}</div>
+            <div class="text-muted smaller mt-1">${escapeHtml(n.created_at.substring(0, 19))}</div>
+          </div>
+          <div>
+            ${!n.is_read ? `
+              <button class="btn btn-sm btn-link text-nowrap" onclick="markRead(${n.id})">
+                Mark read
+              </button>
+            ` : ''}
+          </div>
+        </div>
+      </li>
+    `).join('');
+  }
+}
+
+function startAutoHideTimer(notificationId) {
+  // Clear existing timer if any
+  if (autoHideTimers[notificationId]) {
+    clearTimeout(autoHideTimers[notificationId]);
+  }
+  
+  // Set 1 minute timer to auto-mark as read and move to dropdown
+  autoHideTimers[notificationId] = setTimeout(() => {
+    markReadAndHide(notificationId, true);
+  }, 60000); // 60 seconds
+}
+
+function markReadAndHide(notificationId, isAuto = false) {
+  // Clear timer
+  if (autoHideTimers[notificationId]) {
+    clearTimeout(autoHideTimers[notificationId]);
+    delete autoHideTimers[notificationId];
+  }
+  
+  // Mark as read via API
+  fetch(`/api/notifications/${notificationId}/read`, { method: 'POST' })
+    .then(() => {
+      // Update local data
+      const notif = notificationData.find(n => n.id === notificationId);
+      if (notif) {
+        notif.is_read = true;
+      }
+      
+      // Re-render to show next unread notification
+      renderNotifications();
+      
+      if (!isAuto) {
+        // Show brief feedback
+        showToast('Notification dismissed');
+      }
+    })
+    .catch(err => console.error('Failed to mark notification as read:', err));
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function showToast(message) {
+  // Simple toast notification
+  const toast = document.createElement('div');
+  toast.className = 'position-fixed bottom-0 end-0 m-3 alert alert-success';
+  toast.style.zIndex = '9999';
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 2000);
+}
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', renderNotifications);
+</script>
+{% end %}
+
+<h5 class="mb-3">Booking history</h5>
+{% if not bookings %}
+  <div class="text-muted text-center py-5">
+    <i class="bi bi-calendar2-x fs-1 d-block mb-2"></i>
+    No bookings yet. <a href="/search">Search for halls</a> to make your first request.
+  </div>
+{% else %}
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Hall</th>
+          <th>Requested slot</th>
+          <th>Status</th>
+          <th>Suggestion / notes</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for b in bookings %}
+        <tr>
+          <td>
+            <strong>{{ b['hall_name'] }}</strong><br>
+            <small class="text-muted">{{ b['org_name'] }} &middot; {{ b['location'] }}</small>
+          </td>
+          <td>
+            {{ b['booking_date'] }}<br>
+            <small class="text-muted">{{ b['start_time'] }} – {{ b['end_time'] }}</small>
+          </td>
+          <td>
+            {% if b['status'] == 'pending' %}
+              <span class="badge bg-warning text-dark">Pending</span>
+            {% elif b['status'] == 'approved' %}
+              <span class="badge bg-success">Approved</span>
+            {% elif b['status'] == 'rejected' %}
+              <span class="badge bg-danger">Rejected</span>
+            {% else %}
+              <span class="badge bg-secondary">{{ b['status'] }}</span>
+            {% end %}
+          </td>
+          <td class="small">
+            {% if b['suggested_date'] %}
+              <div style="color: var(--hb-blue);">Suggested: {{ b['suggested_date'] }} {{ b['suggested_start'] }}–{{ b['suggested_end'] }}</div>
+            {% end %}
+            <span class="text-muted">{{ b['admin_note'] or '—' }}</span>
+          </td>
+          <td>
+            {% if b['status'] == 'rejected' and b['suggested_date'] %}
+              <button class="btn btn-sm btn-outline-primary" onclick="acceptSuggestion({{ b['id'] }})">
+                Accept suggestion
+              </button>
+            {% elif b['status'] in ('approved', 'pending') and b['booking_type'] != 'blocked' %}
+              <button class="btn btn-sm btn-outline-danger" onclick="deleteBooking({{ b['id'] }}, '{{ b['booking_date'] }}', '{{ b['start_time'] }}')">
+                <i class="bi bi-trash"></i> {% if b['status'] == 'pending' %}Withdraw{% else %}Cancel{% end %}
+              </button>
+            {% else %}
+              <span class="text-muted">—</span>
+            {% end %}
+          </td>
+        </tr>
+        {% end %}
+      </tbody>
+    </table>
+  </div>
+{% end %}
+{% end %}
+
+{% block scripts %}
+<script>
+async function markRead(id) {
+  await fetch(`/api/notifications/${id}/read`, { method: 'POST' });
+  location.reload();
+}
+async function markAllRead() {
+  await fetch('/api/notifications', { method: 'POST' });
+  location.reload();
+}
+async function acceptSuggestion(id) {
+  if (!confirm('Create a new pending request for the suggested timeslot?')) return;
+  const res = await fetch(`/api/bookings/${id}/accept-suggestion`, { method: 'POST' });
+  const j = await res.json();
+  if (j.ok) { alert('New request created for the suggested slot!'); location.reload(); }
+  else alert(j.error || 'Failed');
+}
+
+async function deleteBooking(id, date, time) {
+  if (!confirm(`Are you sure you want to cancel this booking on ${date} at ${time}? You can only cancel it before it starts.`)) return;
+  const res = await fetch(`/api/bookings/${id}/delete`, { method: 'DELETE' });
+  const j = await res.json();
+  if (j.ok) { 
+    alert('Booking cancelled successfully!'); 
+    location.reload(); 
+  } else {
+    alert(j.error || 'Failed to cancel booking');
+  }
+}
+</script>
+{% end %}

@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+{% block title %}Calendar View — Admin — HallBook{% end %}
+
+{% block head %}
+<script src="{{ static_url('js/calendar.js') }}"></script>
+{% end %}
+
+{% block content %}
+<div class="page-head">
+  <h2><i class="bi bi-calendar3"></i> Calendar view</h2>
+  <a href="/admin" class="btn btn-outline-primary">
+    <i class="bi bi-arrow-left"></i> Back to dashboard
+  </a>
+</div>
+
+{% if not halls %}
+<div class="alert alert-info">
+  <i class="bi bi-info-circle"></i> You don't have any halls yet.
+  <a href="/admin">Go to the dashboard</a> to create an organization and add halls.
+</div>
+{% else %}
+
+<div class="card mb-4">
+  <div class="card-body">
+    <div class="row align-items-center g-3">
+      <div class="col-md-6">
+        <label class="form-label">Select hall</label>
+        <select class="form-select" id="hall-selector" onchange="changeHall()">
+          {% for h in halls %}
+          <option value="{{ h['id'] }}" {% if selected_hall and h['id'] == selected_hall['id'] %}selected{% end %}>
+            {{ h['name'] }} ({{ h['org_name'] }}) - {{ h['org_location'] }}
+          </option>
+          {% end %}
+        </select>
+      </div>
+      {% if selected_hall %}
+      <div class="col-md-6">
+        <div class="small text-muted">
+          <div><i class="bi bi-people"></i> Capacity <span class="text-light">{{ selected_hall['capacity'] }}</span></div>
+          <div><i class="bi bi-stars"></i> Amenities <span class="text-light">{{ selected_hall['amenities'] or '—' }}</span></div>
+        </div>
+      </div>
+      {% end %}
+    </div>
+  </div>
+</div>
+
+{% if selected_hall %}
+<div class="row g-3 mb-4">
+  <div class="col-lg-8">
+    <div class="card">
+      <div class="card-header">
+        <i class="bi bi-calendar-week"></i> {{ selected_hall['name'] }} — booking calendar
+      </div>
+      <div class="card-body">
+        <div class="small text-muted mb-3 d-flex flex-wrap gap-3">
+          <span><span class="dot dot-green"></span>Approved</span>
+          <span><span class="dot dot-amber"></span>Pending approval</span>
+          <span><span class="dot dot-blue"></span>Blocked by admin</span>
+        </div>
+        <p class="small text-muted mb-3">Hover a booking to see the requester and purpose. Columns are days 1–31; rows are hours 00:00–23:00.</p>
+
+        <div id="admin-hall-calendar"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-4">
+    <div class="card">
+      <div class="card-header">
+        <i class="bi bi-lock-fill"></i> Block time slots
+      </div>
+      <div class="card-body">
+        <p class="small text-muted">
+          Block a date range for recurring events. Blocked slots show in blue and are visible to everyone.
+        </p>
+
+        <form id="form-block-booking">
+          <input type="hidden" name="hall_id" value="{{ selected_hall['id'] }}">
+
+          <div class="mb-3">
+            <label class="form-label">Date range</label>
+            <div class="row g-2">
+              <div class="col-6">
+                <input type="date" name="start_date" class="form-control form-control-sm" required aria-label="From date">
+              </div>
+              <div class="col-6">
+                <input type="date" name="end_date" class="form-control form-control-sm" required aria-label="To date">
+              </div>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Recurrence pattern <span class="text-muted">(optional)</span></label>
+            <select name="day_of_week" class="form-select form-select-sm" id="day-of-week-selector">
+              <option value="">All days in range (consecutive)</option>
+              <option value="0">Every Sunday</option>
+              <option value="1">Every Monday</option>
+              <option value="2">Every Tuesday</option>
+              <option value="3">Every Wednesday</option>
+              <option value="4">Every Thursday</option>
+              <option value="5">Every Friday</option>
+              <option value="6">Every Saturday</option>
+            </select>
+            <small class="text-muted d-block mt-1">
+              Select a specific day to book only that day of the week within the date range
+            </small>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Time slot</label>
+            <div class="row g-2">
+              <div class="col-6">
+                <input type="time" name="start_time" class="form-control form-control-sm" required aria-label="Start time">
+              </div>
+              <div class="col-6">
+                <input type="time" name="end_time" class="form-control form-control-sm" required aria-label="End time">
+              </div>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Requester name <span class="text-muted">(optional)</span></label>
+            <input type="text" name="requester_name" class="form-control form-control-sm"
+                   placeholder="e.g., XYZ Corporation">
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Reason <span class="text-muted">(optional)</span></label>
+            <textarea name="message" class="form-control form-control-sm" rows="2"
+                      placeholder="e.g., Reserved for annual conference"></textarea>
+          </div>
+
+          <button type="submit" class="btn btn-primary w-100">
+            <i class="bi bi-lock-fill"></i> Block these slots
+          </button>
+        </form>
+
+        <div id="block-booking-msg" class="mt-3"></div>
+      </div>
+    </div>
+  </div>
+</div>
+{% end %}
+
+{% end %}
+{% end %}
+
+{% block scripts %}
+<script>
+{% if selected_hall %}
+// Initialize calendar with selected hall
+document.addEventListener('DOMContentLoaded', function() {
+  initializeCalendar('admin-hall-calendar', {{ selected_hall['id'] }});
+  
+  // Set minimum date to today
+  const today = new Date().toISOString().split('T')[0];
+  document.querySelector('input[name="start_date"]').min = today;
+  document.querySelector('input[name="end_date"]').min = today;
+});
+
+// Handle blocked booking form submission
+document.getElementById('form-block-booking')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const data = Object.fromEntries(fd);
+  const msgEl = document.getElementById('block-booking-msg');
+  msgEl.innerHTML = '';
+  
+  // Validate dates
+  if (new Date(data.end_date) < new Date(data.start_date)) {
+    msgEl.innerHTML = '<div class="alert alert-danger">End date must be after start date</div>';
+    return;
+  }
+  
+  // Validate times
+  if (data.end_time <= data.start_time) {
+    msgEl.innerHTML = '<div class="alert alert-danger">End time must be after start time</div>';
+    return;
+  }
+  
+  try {
+    const res = await fetch('/api/bookings/blocked', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(data)
+    });
+    
+    const j = await res.json();
+    
+    if (j.ok) {
+      msgEl.innerHTML = `<div class="alert alert-success">${j.message || 'Success!'}<br>Created ${j.count} blocked booking(s).</div>`;
+      e.target.reset();
+      
+      // Refresh calendar
+      if (calendar) {
+        calendar.init();
+      }
+    } else {
+      msgEl.innerHTML = `<div class="alert alert-danger">${j.error || 'Failed to create blocked bookings'}</div>`;
+    }
+  } catch (err) {
+    msgEl.innerHTML = `<div class="alert alert-danger">Error: ${err.message}</div>`;
+  }
+});
+{% end %}
+
+function changeHall() {
+  const hallId = document.getElementById('hall-selector').value;
+  window.location.href = `/admin/calendar?hall_id=${hallId}`;
+}
+</script>
+{% end %}

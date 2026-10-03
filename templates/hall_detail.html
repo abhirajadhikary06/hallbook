@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}{{ hall['name'] }} — HallBook{% end %}
+{% block content %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="/search">Search</a></li>
+    <li class="breadcrumb-item active">{{ hall['name'] }}</li>
+  </ol>
+</nav>
+
+<div class="row g-4">
+  <div class="col-lg-5">
+    <div class="card">
+      <div class="card-body">
+        <h3 class="mb-2">{{ hall['name'] }}</h3>
+        <p class="text-muted mb-3">
+          <i class="bi bi-building"></i> {{ hall['org_name'] }}
+          &nbsp;<i class="bi bi-geo-alt"></i> {{ hall['org_location'] }}
+        </p>
+        <p>{{ hall['description'] or 'No description.' }}</p>
+        <div class="d-flex flex-wrap gap-2 mt-3">
+          <span class="badge bg-secondary"><i class="bi bi-people"></i> Capacity {{ hall['capacity'] }}</span>
+          {% if hall['amenities'] %}<span class="badge bg-secondary"><i class="bi bi-stars"></i> {{ hall['amenities'] }}</span>{% end %}
+        </div>
+      </div>
+    </div>
+
+    {% if user and user['role'] != 'admin' %}
+    <div class="card mt-3">
+      <div class="card-header">Request a booking slot</div>
+      <div class="card-body">
+        <form id="form-booking">
+          <input type="hidden" name="hall_id" value="{{ hall['id'] }}">
+          <div class="mb-3">
+            <label class="form-label">Date</label>
+            <input type="date" name="booking_date" class="form-control" required id="booking-date">
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-6">
+              <label class="form-label">Start time</label>
+              <input type="time" name="start_time" class="form-control" required>
+            </div>
+            <div class="col-6">
+              <label class="form-label">End time</label>
+              <input type="time" name="end_time" class="form-control" required>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Message <span class="text-muted">(optional)</span></label>
+            <textarea name="message" class="form-control" rows="2" placeholder="Event type, number of guests…"></textarea>
+          </div>
+          <button type="submit" class="btn btn-primary w-100">Submit request</button>
+        </form>
+        <div id="booking-msg" class="mt-3"></div>
+      </div>
+    </div>
+    {% elif not user %}
+    <div class="alert alert-info mt-3 mb-0">
+      <a href="/login?next=/hall/{{ hall['id'] }}">Log in</a> to request a booking.
+    </div>
+    {% end %}
+  </div>
+
+  <div class="col-lg-7">
+    <div class="card">
+      <div class="card-header">
+        <i class="bi bi-calendar3"></i> Booking calendar
+      </div>
+      <div class="card-body">
+        <p class="small text-muted mb-3 d-flex flex-wrap gap-3">
+          <span><span class="dot dot-green"></span>Approved (unavailable)</span>
+          <span><span class="dot dot-amber"></span>Pending approval</span>
+          <span><span class="dot dot-blue"></span>Blocked by admin</span>
+        </p>
+        <div id="hall-calendar"></div>
+      </div>
+    </div>
+  </div>
+</div>
+{% end %}
+
+{% block head %}
+<script src="{{ static_url('js/calendar.js') }}"></script>
+{% end %}
+
+{% block scripts %}
+<script>
+// Initialize tooltips on page load
+document.addEventListener('DOMContentLoaded', function() {
+  const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+  [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl));
+  
+  // Initialize calendar
+  initializeCalendar('hall-calendar', {{ hall['id'] }});
+});
+
+// Default date = tomorrow
+(function() {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  const iso = d.toISOString().slice(0, 10);
+  const bd = document.getElementById('booking-date');
+  if (bd) bd.min = iso;
+  if (bd) bd.value = iso;
+})();
+
+document.getElementById('form-booking')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const data = Object.fromEntries(fd);
+  const msg = document.getElementById('booking-msg');
+  msg.innerHTML = '';
+  const res = await fetch('/api/bookings', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(data)
+  });
+  const j = await res.json();
+  if (j.ok) {
+    msg.innerHTML = '<div class="alert alert-success mb-0">Request submitted! Check your dashboard for status.</div>';
+    e.target.reset();
+    const d = new Date(); d.setDate(d.getDate() + 1);
+    document.getElementById('booking-date').value = d.toISOString().slice(0, 10);
+  } else {
+    let errorHtml = `<div class="alert alert-danger mb-0">${j.error || 'Failed'}`;
+    
+    // Check if there are alternative halls suggested
+    if (j.conflict && j.alternative_halls && j.alternative_halls.length > 0) {
+      errorHtml += '<hr><strong>Alternative halls available for this timeslot:</strong><ul class="mt-2 mb-0 list-unstyled">';
+      j.alternative_halls.forEach(hall => {
+        errorHtml += `<li class="mb-3">
+          <strong>${hall.name}</strong> 
+          <span class="badge bg-info text-dark">Capacity: ${hall.capacity}</span><br>
+          <small class="text-muted">${hall.amenities || 'No amenities listed'}</small><br>
+          <a href="/hall/${hall.id}" class="btn btn-sm btn-outline-primary mt-1" target="_blank">
+            <i class="bi bi-box-arrow-up-right"></i> View & book this hall
+          </a>
+        </li>`;
+      });
+      errorHtml += '</ul>';
+    } else if (j.conflict && j.alternative_halls && j.alternative_halls.length === 0) {
+      errorHtml += '<hr><small class="text-muted">No other halls in this organization are available for this timeslot.</small>';
+    }
+    
+    errorHtml += '</div>';
+    msg.innerHTML = errorHtml;
+  }
+});
+</script>
+{% end %}

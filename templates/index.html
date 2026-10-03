@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Hall Booking Platform{% end %}
+{% block content %}
+<section class="hero">
+  <a href="/search" class="hero-pill"><i class="bi bi-stars"></i> Multiple halls, one dashboard <i class="bi bi-chevron-right small"></i></a>
+  <h1>The better way to book a hall</h1>
+  <p class="lead">Search organizations by city, request a time slot, and get notified the moment an admin approves it. Hosts manage every hall from a single calendar.</p>
+  <div class="d-flex justify-content-center gap-2 flex-wrap">
+    <a href="/search" class="btn btn-primary btn-lg"><i class="bi bi-search"></i> Find halls</a>
+    {% if not user %}
+      <a href="/register" class="btn btn-outline-primary btn-lg">Create free account</a>
+    {% end %}
+  </div>
+  <div class="hero-note">No credit card required</div>
+
+  <!-- Illustrative booking widget -->
+  <div class="hero-widget" aria-hidden="true">
+    <div class="hero-widget-inner">
+      <div class="hw-info">
+        <div class="hw-org">Riverside Community Centre</div>
+        <h3>Grand Hall</h3>
+        <p>Stage, AV system and seating for up to 200 guests.</p>
+        <ul class="hw-meta">
+          <li><i class="bi bi-people"></i>Capacity 200</li>
+          <li><i class="bi bi-clock"></i>Hourly slots</li>
+          <li><i class="bi bi-geo-alt"></i>Downtown</li>
+        </ul>
+      </div>
+      <div class="hw-cal">
+        <div class="hw-cal-head">
+          <div>October <span>2026</span></div>
+          <div class="hw-arrows"><i class="bi bi-chevron-left"></i><i class="bi bi-chevron-right"></i></div>
+        </div>
+        <div class="hw-grid">
+          <div class="hw-dow">SUN</div><div class="hw-dow">MON</div><div class="hw-dow">TUE</div><div class="hw-dow">WED</div><div class="hw-dow">THU</div><div class="hw-dow">FRI</div><div class="hw-dow">SAT</div>
+          <div></div><div></div><div></div><div></div>
+          <div class="hw-day">1</div><div class="hw-day">2</div><div class="hw-day">3</div>
+          <div class="hw-day">4</div><div class="hw-day">5</div><div class="hw-day">6</div><div class="hw-day">7</div><div class="hw-day">8</div><div class="hw-day">9</div><div class="hw-day">10</div>
+          <div class="hw-day">11</div><div class="hw-day open">12</div><div class="hw-day open">13</div><div class="hw-day open">14</div><div class="hw-day sel">15</div><div class="hw-day open">16</div><div class="hw-day">17</div>
+          <div class="hw-day">18</div><div class="hw-day open">19</div><div class="hw-day open">20</div><div class="hw-day open">21</div><div class="hw-day open">22</div><div class="hw-day open">23</div><div class="hw-day">24</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="row g-3 mt-2">
+  <div class="col-md-4">
+    <div class="card feature">
+      <div class="feature-icon"><i class="bi bi-geo-alt"></i></div>
+      <h5>Search by location</h5>
+      <p>Find organizations and their halls near you. Filter by city, name or keyword.</p>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card feature">
+      <div class="feature-icon"><i class="bi bi-calendar-check"></i></div>
+      <h5>Request and approve</h5>
+      <p>Request a slot. Admins approve one request per slot and can suggest another time.</p>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card feature">
+      <div class="feature-icon"><i class="bi bi-bell"></i></div>
+      <h5>Live notifications</h5>
+      <p>Know right away when a request is approved, rejected, or a better slot is suggested.</p>
+    </div>
+  </div>
+</div>
+
+{% if not user %}
+<div class="demo-box mt-4 text-center">
+  Demo accounts: admin <code>admin</code> / <code>admin123</code> &nbsp;&middot;&nbsp; user <code>demo_user</code> / <code>user123</code>
+</div>
+{% end %}
+{% end %}

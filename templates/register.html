@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Sign up — HallBook{% end %}
+{% block content %}
+<div class="auth-wrap">
+  <div class="card">
+    <div class="card-body p-4">
+      <h3 class="text-center mb-1">Create your account</h3>
+      <p class="auth-sub text-center">Book halls or host your own.</p>
+      {% if error %}
+        <div class="alert alert-danger">{{ error }}</div>
+      {% end %}
+      <form method="post" action="/register">
+        <div class="mb-3">
+          <label class="form-label">Username</label>
+          <input type="text" name="username" class="form-control" required autofocus>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Email</label>
+          <input type="email" name="email" class="form-control" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Password</label>
+          <input type="password" name="password" class="form-control" minlength="6" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">I want to</label>
+          <select name="role" class="form-select">
+            <option value="user">Book halls (User)</option>
+            <option value="admin">Host halls / Organization (Admin)</option>
+          </select>
+        </div>
+        <button type="submit" class="btn btn-primary w-100">Create account</button>
+      </form>
+      <p class="text-center mt-3 mb-0 small text-muted">Already have an account? <a href="/login">Log in</a></p>
+    </div>
+  </div>
+</div>
+{% end %}
