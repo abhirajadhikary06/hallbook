@@ -11,6 +11,7 @@ class HallCalendar {
     this.currentDate = new Date();
     this.bookings = [];
     this.tooltips = [];
+    this.viewOffset = 0; // 0 for 0-11 hours, 1 for 12-23 hours
     window.addEventListener('resize', () => {
       clearTimeout(this.resizeTimer);
       this.resizeTimer = setTimeout(() => this.render(), 120);
@@ -38,7 +39,17 @@ class HallCalendar {
 
   changeMonth(delta) {
     this.currentDate.setMonth(this.currentDate.getMonth() + delta);
+    this.viewOffset = 0; // Reset to first 12 hours when changing months
     this.init();
+  }
+
+  changeTimeView(direction) {
+    // direction: -1 for previous 12 hours, 1 for next 12 hours
+    this.viewOffset += direction;
+    // Clamp to valid range: 0 (0-11) or 1 (12-23)
+    if (this.viewOffset < 0) this.viewOffset = 0;
+    if (this.viewOffset > 1) this.viewOffset = 1;
+    this.render();
   }
 
   getDaysInMonth() {
@@ -83,6 +94,10 @@ class HallCalendar {
     // Fit the month into the available viewport height while retaining legible rows.
     const rowHeight = Math.max(20, Math.min(24, Math.floor((window.innerHeight - 240) / daysInMonth)));
     
+    // Time range label based on view offset
+    const timeRangeLabel = this.viewOffset === 0 ? '00:00 - 11:59' : '12:00 - 23:59';
+    const currentHours = this.viewOffset === 0 ? [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] : [12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23];
+    
     let html = `
       <div class="calendar-month-nav">
         <button class="btn btn-sm btn-outline-primary" onclick="calendar.changeMonth(-1)">
@@ -92,6 +107,12 @@ class HallCalendar {
         <button class="btn btn-sm btn-outline-primary" onclick="calendar.changeMonth(1)">
           Next <i class="bi bi-chevron-right"></i>
         </button>
+      </div>
+      
+      <div class="calendar-time-nav">
+        <span class="time-range-label">${timeRangeLabel}</span>
+        ${this.viewOffset > 0 ? `<button class="nav-arrow-btn" onclick="calendar.changeTimeView(-1)" title="Show previous 12 hours"><svg viewBox="0 0 24 24"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg></button>` : ''}
+        ${this.viewOffset < 1 ? `<button class="nav-arrow-btn" onclick="calendar.changeTimeView(1)" title="Show next 12 hours"><svg viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></button>` : ''}
       </div>
       
       <div class="calendar-legend">
@@ -121,8 +142,9 @@ class HallCalendar {
               <th class="calendar-date-header">Date</th>
     `;
     
-    // Hour headers (0-23)
-    for (let hour = 0; hour < 24; hour++) {
+    // Hour headers (12 hours based on view offset)
+    const startHour = this.viewOffset === 0 ? 0 : 12;
+    for (let hour = startHour; hour < startHour + 12; hour++) {
       html += `<th class="calendar-hour-header">${hour.toString().padStart(2, '0')}</th>`;
     }
     
@@ -134,8 +156,8 @@ class HallCalendar {
       html += `<tr style="height: ${rowHeight}px;">`;
       html += `<td class="calendar-date-cell">${day}</td>`;
       
-      // One cell spans the 24 hour columns, so booking x positions map to time.
-      html += `<td colspan="24" style="padding: 0; position: relative; height: 100%;">
+      // One cell spans the 12 hour columns, so booking x positions map to time.
+      html += `<td colspan="12" style="padding: 0; position: relative; height: 100%;">
                  <div class="calendar-day-bookings" style="position: relative; width: 100%; height: ${rowHeight}px;">`;
       
       // Add all bookings for this day
@@ -162,8 +184,25 @@ class HallCalendar {
         
         const bookingIndex = overlappingBookings.indexOf(booking);
         const laneCount = overlappingBookings.length;
-        const leftPercent = (startHour / 24) * 100;
-        const widthPercent = (duration / 24) * 100;
+        
+        // Calculate relative position within the current 12-hour view
+        const viewStartHour = this.viewOffset === 0 ? 0 : 12;
+        const viewEndHour = viewStartHour + 12;
+        
+        // If booking starts before current view or ends after current view, clamp it
+        const effectiveStart = Math.max(startHour, viewStartHour);
+        const effectiveEnd = Math.min(endHour, viewEndHour);
+        
+        // Only render if the booking has any overlap with the current view
+        if (effectiveEnd <= effectiveStart) {
+          return; // Skip this booking for this view
+        }
+        
+        // Calculate percentage relative to the 12-hour view
+        const totalViewHours = 12;
+        const leftPercent = ((effectiveStart - viewStartHour) / totalViewHours) * 100;
+        const widthPercent = ((effectiveEnd - effectiveStart) / totalViewHours) * 100;
+        
         const laneHeight = 100 / laneCount;
         const topPercent = bookingIndex * laneHeight;
         

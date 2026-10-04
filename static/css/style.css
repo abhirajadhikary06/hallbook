@@ -732,6 +732,47 @@ code {
 .dot-amber { background: #e0a420; }
 .dot-blue { background: #3b5bdb; }
 
+/* ---- 12-hour timeline view ------------------------------------------------ */
+.calendar-time-nav {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.calendar-time-nav button.nav-arrow-btn {
+  background: var(--hb-surface-3);
+  border: 1px solid var(--hb-border-strong);
+  border-radius: 4px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+  padding: 0;
+  margin-left: 8px;
+}
+
+.calendar-time-nav button.nav-arrow-btn:hover {
+  background: var(--hb-surface);
+  border-color: #fff;
+}
+
+.calendar-time-nav button.nav-arrow-btn svg {
+  width: 12px;
+  height: 12px;
+  fill: #fff;
+}
+
+.calendar-time-nav .time-range-label {
+  font-size: 0.78rem;
+  color: var(--hb-muted);
+  margin-right: 8px;
+  font-weight: 500;
+}
+
 /* ---- Responsive ----------------------------------------------------------- */
 @media (max-width: 768px) {
   .hero { padding-top: 2rem; }
